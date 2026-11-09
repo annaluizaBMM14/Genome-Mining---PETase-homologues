@@ -1,0 +1,61 @@
+#!/bin/bash
+
+LISTA_GCF="baixar_genomas.txt"
+
+PASTA_SAIDA="genomas_baixados_data"
+mkdir -p "$PASTA_SAIDA"
+
+ASSEMBLY_SUMMARY="assembly_summary.txt"
+if [ ! -f "$ASSEMBLY_SUMMARY" ]; then
+    echo "ðŸ“¥ Baixando assembly_summary.txt do NCBI..."
+    wget -q https://ftp.ncbi.nlm.nih.gov/genomes/refseq/bacteria/assembly_summary.txt -O "$ASSEMBLY_SUMMARY"
+fi
+
+while read -r GCF; do
+    # Remove espaÃ§os e quebras de linha extras
+    GCF=$(echo "$GCF" | tr -d ' \r\t\n')
+    if [[ -z "$GCF" ]]; then
+        continue
+    fi
+
+    echo "ðŸ”Ž Processando $GCF ..."
+
+    LINHA=$(grep -P "^$GCF\t" "$ASSEMBLY_SUMMARY")
+    if [[ -z "$LINHA" ]]; then
+        echo "âš ï¸ GCF $GCF nÃ£o encontrado no assembly_summary.txt"
+        continue
+    fi
+
+    FTP_PATH=$(echo "$LINHA" | cut -f20)
+    if [[ -z "$FTP_PATH" || "$FTP_PATH" == "na" ]]; then
+        echo "âš ï¸ FTP path nÃ£o disponÃ­vel para $GCF"
+        continue
+    fi
+
+    BASENAME=$(basename "$FTP_PATH")
+    ARQ_GZ="${BASENAME}_genomic.fna.gz"
+    URL="${FTP_PATH}/${ARQ_GZ}"
+    OUT_PATH="${PASTA_SAIDA}/${ARQ_GZ}"
+    OUT_FNA="${PASTA_SAIDA}/${BASENAME}_genomic.fna"
+
+    echo "ðŸ“¥ Baixando $URL ..."
+    wget -q --show-progress -O "$OUT_PATH" "$URL"
+
+    if [[ ! -f "$OUT_PATH" ]]; then
+        echo "âŒ Falha ao baixar $URL"
+        continue
+    fi
+
+    gzip -t "$OUT_PATH" 2>/dev/null
+    if [[ $? -ne 0 ]]; then
+        echo "âŒ Arquivo corrompido ou incompleto: $OUT_PATH"
+        rm -f "$OUT_PATH"
+        continue
+    fi
+
+    gunzip -f "$OUT_PATH"
+    echo "âœ… Genoma salvo em: $OUT_FNA"
+
+done < "$LISTA_GCF"
+
+echo "ðŸŽ‰ Download e descompactaÃ§Ã£o concluÃ­dos."
